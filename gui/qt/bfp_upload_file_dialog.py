@@ -191,6 +191,8 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
             d = PasswordDialog(parent, None)
             self.password = d.run()
 
+        self.make_dirty()
+
         if show_on_create:
             self.setModal(True)
             self.show()
@@ -202,6 +204,10 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
             self.file_receiver_e.setText('')
 
     def make_dirty(self):
+        # clear fields before re-populating
+        self.upload_cost_label.setText('')
+        self.bitcoinfileAddr_label.setText('')
+
         self.is_dirty = True
         self.upload_button.setDisabled(True)
         self.progress.setValue(0)
@@ -210,11 +216,16 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
         self.chunks_processed = 0
         self.chunks_total = 0
         self.final_metadata_txn_created = False
-        if self.filename != '':
+        if self.filename != '' and self.filename != None:
             self.sign_button.setEnabled(True)
             self.sign_button.setDefault(True)
+            self.progress_label.setText("Ready to sign.")
         else:
             self.select_file_button.setDefault(True)
+            self.progress_label.setText("Select a file.")
+        self.progress_label.setVisible(True)
+
+
 
     def sign_txns(self):
 
@@ -362,7 +373,23 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
         options |= QFileDialog.DontUseNativeDialog
         home = str(Path.home())
         self.filename, _ = QFileDialog.getOpenFileName(self, "Select File to Upload", home, "All Files (*)", options=options)
-        self.sign_txns()
+        #self.sign_button.setVisible(True)
+        self.make_dirty()
+
+        if self.filename != '':
+            self.select_file_button.setDefault(False)
+            self.path.setText('')
+            self.hash.setText('')
+            with open(self.filename,"rb") as f:
+
+                bytes = f.read()
+                if len(bytes) > 5261:
+                    self.show_error("Files cannot be larger than 5.261kB in size.")
+                    return
+                import hashlib
+                readable_hash = hashlib.sha256(bytes).hexdigest()
+                self.hash.setText(readable_hash)
+                self.path.setText(self.filename)
         
     def upload(self):
         if not self.is_dirty:
@@ -373,7 +400,6 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
             broadcast_count = 0
             # Broadcast all transaction to the nexwork
             for tx in self.tx_batch:
-                tx_desc = None
                 status, msg = self.network.broadcast(tx)
                 # print(status)
                 # print(msg)
@@ -384,6 +410,8 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
 
                 broadcast_count += 1
                 time.sleep(0.1)
+                if broadcast_count == len(self.tx_batch):
+                    self.wallet.set_label(tx.txid(), "bitcoinfile:" + tx.txid() + " (" + basename(self.filename) + ")")
                 self.progress_label.setText("Broadcasting " + str(broadcast_count) + " of " + str(len(self.tx_batch)) + " transactions")
                 self.progress.setValue(broadcast_count)
                 QApplication.processEvents()
