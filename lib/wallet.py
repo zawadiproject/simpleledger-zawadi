@@ -784,7 +784,7 @@ class Abstract_Wallet(PrintError):
         for addr in domain:
             utxos = self.get_addr_utxo(addr, slpTokenId = self.send_slpTokenId, get_all = get_all)
             for x in utxos.values():
-                if exclude_frozen and x.get('is_frozen_coin', False):
+                if exclude_frozen and x['is_frozen_coin']:
                     continue
                 if confirmed_only and x['height'] <= 0:
                     continue
@@ -1446,7 +1446,10 @@ class Abstract_Wallet(PrintError):
             Note: this is set/unset independent of 'address' level freezing. '''
         assert isinstance(utxo, (str, dict))
         if isinstance(utxo, dict):
-            return utxo.get('is_frozen_coin', False)
+            ret = ("{}:{}".format(utxo['prevout_hash'], utxo['prevout_n'])) in self.frozen_coins
+            if ret != utxo['is_frozen_coin']:
+                self.print_error("*** WARNING: utxo has stale is_frozen_coin flag")
+            return ret
         return utxo in self.frozen_coins
 
     def set_frozen_state(self, addrs, freeze):
